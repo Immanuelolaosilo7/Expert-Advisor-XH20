@@ -1,0 +1,229 @@
+import MetaTrader5 as mt5
+import pandas as pd
+import mysql.connector
+from datetime import datetime, timedelta
+
+# Constants
+SYMBOL = "EURUSD"
+TIMEFRAME = mt5.TIMEFRAME_M1
+MIN_PIPETTES_BODY = 10
+MIN_PIPETTES_WICK = 5
+MIN_PIPETTES_DIFF = 3
+MIN_PIPETTES_00_59 = 5  # Closing price of 00 to opening price of 59
+MIN_PIPETTES_01_59 = 5  # Closing price of 01 to opening price of 59
+
+# Initialize MT5 connection
+if not mt5.initialize():
+    print("Failed to initialize MT5, error code =", mt5.last_error())
+    quit()
+
+# Connect to MySQL
+db = mysql.connector.connect(
+    host="localhost",
+    user="your_username",
+    password="your_password",
+    database="your_database"
+)
+cursor = db.cursor()
+
+# Create the patterns table if it doesn't exist
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS patterns (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    pattern_name VARCHAR(255) NOT NULL,
+    three_minute_trend ENUM('Bull', 'Bear') NOT NULL,
+    full_hour_bull INT DEFAULT 0,
+    full_hour_bear INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+db.commit()
+
+def get_candles(symbol, timeframe, start, end):
+    """
+    Fetch candlestick data from MT5.
+    """
+    rates = mt5.copy_rates_range(symbol, timeframe, start, end)
+    if rates is None:
+        print("Failed to fetch candlestick data.")
+        return None
+    return pd.DataFrame(rates)
+
+def analyze_candle_set(x, y, z):
+    """
+    Analyze a set of three candles (x, y, z) and assign a group identifier based on conditions.
+    """
+    x_open = x['open']
+    y_close = y['close']
+    z_close = z['close']
+
+    # Check if the minimum pipettes conditions are met
+    if abs(y_close - x_open) < MIN_PIPETTES_00_59 or abs(z_close - x_open) < MIN_PIPETTES_01_59:
+        return None
+
+    # Define identifiers based on comparisons
+    identifier = ""
+
+    # Bull/Bull/Bull
+    if x_open < y_close < z_close:
+        identifier = "Bull_Bull_Bull_1"
+    # Bear/Bear/Bear
+    elif x_open > y_close > z_close:
+        identifier = "Bear_Bear_Bear_1"
+    # Bull/Bear/Bull
+    elif x_open < y_close > z_close:
+        if x_open < y_close < z_close:
+            identifier = "Bull_Bear_Bull_1"
+        elif x_open > y_close and x_open > z_close:
+            identifier = "Bull_Bear_Bull_2"
+        elif x_open > y_close and x_open < z_close and y_close > z_close:
+            identifier = "Bull_Bear_Bull_3"
+        elif x_open > y_close and x_open < z_close and y_close < z_close:
+            identifier = "Bull_Bear_Bull_4"
+    # Bear/Bull/Bear
+    elif x_open > y_close < z_close:
+        if x_open > y_close > z_close:
+            identifier = "Bear_Bull_Bear_1"
+        elif x_open < y_close and x_open < z_close:
+            identifier = "Bear_Bull_Bear_2"
+        elif x_open < y_close and x_open > z_close and y_close < z_close:
+            identifier = "Bear_Bull_Bear_3"
+        elif x_open < y_close and x_open > z_close and y_close > z_close:
+            identifier = "Bear_Bull_Bear_4"
+    # Bull/Bull/Bear
+    elif x_open < y_close < z_close:
+        identifier = "Bull_Bull_Bear_1"
+    elif x_open < y_close and y_close > z_close and x_open < z_close:
+        identifier = "Bull_Bull_Bear_2"
+    elif x_open < y_close and x_open > z_close:
+        identifier = "Bull_Bull_Bear_3"
+    # Bear/Bear/Bull
+    elif x_open > y_close > z_close:
+        identifier = "Bear_Bear_Bull_1"
+    elif x_open > y_close and y_close < z_close and x_open > z_close:
+        identifier = "Bear_Bear_Bull_2"
+    elif x_open > y_close and x_open < z_close:
+        identifier = "Bear_Bear_Bull_3"
+    # Bear/Bull/Bull
+    elif x_open > y_close and x_open > z_close:
+        identifier = "Bear_Bull_Bull_1"
+    elif x_open > y_close and x_open < z_close:
+        identifier = "Bear_Bull_Bull_2"
+    elif x_open < y_close < z_close:
+        identifier = "Bear_Bull_Bull_3"
+    # Bull/Bear/Bear
+    elif x_open < y_close and x_open < z_close:
+        identifier = "Bull_Bear_Bear_1"
+    elif x_open < y_close and x_open > z_close:
+        identifier = "Bull_Bear_Bear_2"
+    elif x_open > y_close > z_close:
+        identifier = "Bull_Bear_Bear_3"
+
+    return identifier
+
+def fetch_historical_data(symbol, timeframe, hours=2000):
+    """
+    Fetch historical candlestick data for the past specified hours.
+    """
+    end_time = datetime.now()
+    start_time = end_time - timedelta(hours=hours)
+    rates = mt5.copy_rates_range(symbol, timeframe, start_time, end_time)
+    if rates is None:
+        print("Failed to fetch historical data.")
+        return None
+    return pd.DataFrame(rates)
+
+def analyze_historical_data(data):
+    """
+    Analyze historical data and calculate percentage ratios for each pattern.
+    """
+    patterns = {}  # To store patterns and their bull/bear counts
+
+    # Iterate through the data in steps of 60 (to get 59, 00, 01 of each hour)
+    for i in range(2, len(data), 60):
+        # Ensure we have enough data for the next hour
+        if i + 60 > len(data):
+            break
+
+        # Get the three candles (59, 00, 01)
+        x = data.iloc[i - 2]  # 59th minute
+        y = data.iloc[i - 1]  # 00th minute
+        z = data.iloc[i]      # 01st minute
+
+        # Analyze the three candles
+        identifier = analyze_candle_set(x, y, z)
+        if identifier:
+            # Determine the 3-minute trend (bull or bear)
+            three_minute_trend = "Bull" if z['close'] > x['open'] else "Bear"
+
+            # Get the hour of the 00th minute candle (y)
+            hour_start = y['time'].replace(minute=0, second=0, microsecond=0)
+            hour_end = hour_start + timedelta(hours=1)
+
+            # Fetch all candles for the current hour (00:00 to 59:59)
+            hour_candles = data[(data['time'] >= hour_start) & (data['time'] < hour_end)]
+
+            # Determine if the hour is bull or bear
+            if len(hour_candles) > 0:
+                hour_open = hour_candles.iloc[0]['open']
+                hour_close = hour_candles.iloc[-1]['close']
+                hour_candle_type = "Bull" if hour_close > hour_open else "Bear"
+
+                # Create a unique pattern name with the 3-minute trend
+                pattern_name = f"{identifier}_{three_minute_trend}"
+
+                # Update the pattern counts
+                if pattern_name not in patterns:
+                    patterns[pattern_name] = {"Bull": 0, "Bear": 0}
+                patterns[pattern_name][hour_candle_type] += 1
+
+    # Calculate percentage ratios for each pattern
+    for pattern, counts in patterns.items():
+        total = counts["Bull"] + counts["Bear"]
+        if total > 0:
+            bull_ratio = (counts["Bull"] / total) * 100
+            bear_ratio = (counts["Bear"] / total) * 100
+            print(f"Pattern: {pattern}, Full Hour Bull: {counts['Bull']}, Full Hour Bear: {counts['Bear']}, Buy Ratio: {bull_ratio:.2f}%, Sell Ratio: {bear_ratio:.2f}%")
+
+def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear):
+    """
+    Store the pattern in the MySQL database.
+    """
+    # Check if the pattern already exists
+    cursor.execute("""
+        SELECT full_hour_bull, full_hour_bear FROM patterns 
+        WHERE pattern_name = %s AND three_minute_trend = %s
+    """, (pattern_name, three_minute_trend))
+    result = cursor.fetchone()
+
+    if result:
+        # Update the counts if the pattern exists
+        new_bull = result[0] + full_hour_bull
+        new_bear = result[1] + full_hour_bear
+        cursor.execute("""
+            UPDATE patterns 
+            SET full_hour_bull = %s, full_hour_bear = %s 
+            WHERE pattern_name = %s AND three_minute_trend = %s
+        """, (new_bull, new_bear, pattern_name, three_minute_trend))
+    else:
+        # Insert a new pattern if it doesn't exist
+        cursor.execute("""
+            INSERT INTO patterns (pattern_name, three_minute_trend, full_hour_bull, full_hour_bear) 
+            VALUES (%s, %s, %s, %s)
+        """, (pattern_name, three_minute_trend, full_hour_bull, full_hour_bear))
+    db.commit()
+
+def main():
+    # Fetch historical data
+    historical_data = fetch_historical_data(SYMBOL, TIMEFRAME, hours=2000)
+    if historical_data is not None:
+        analyze_historical_data(historical_data)
+
+# Run the main function
+if __name__ == "__main__":
+    main()
+
+# Close connections
+cursor.close()
+db.close()
+mt5.shutdown()
