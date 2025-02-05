@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS patterns (
     three_minute_trend ENUM('Bull', 'Bear') NOT NULL,
     full_hour_bull INT DEFAULT 0,
     full_hour_bear INT DEFAULT 0,
+    first_10_min_bull INT DEFAULT 0,
+    first_10_min_bear INT DEFAULT 0,
+    first_15_min_bull INT DEFAULT 0,
+    first_15_min_bear INT DEFAULT 0,
+    first_20_min_bull INT DEFAULT 0,
+    first_20_min_bear INT DEFAULT 0,
+    first_30_min_bull INT DEFAULT 0,
+    first_30_min_bear INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
@@ -172,45 +180,177 @@ def analyze_historical_data(data):
                 # Create a unique pattern name with the 3-minute trend
                 pattern_name = f"{identifier}_{three_minute_trend}"
 
-                # Update the pattern counts
+                # Initialize the pattern if it doesn't exist
                 if pattern_name not in patterns:
-                    patterns[pattern_name] = {"Bull": 0, "Bear": 0}
-                patterns[pattern_name][hour_candle_type] += 1
+                    patterns[pattern_name] = {
+                        "full_hour_bull": 0,
+                        "full_hour_bear": 0,
+                        "first_10_min_bull": 0,
+                        "first_10_min_bear": 0,
+                        "first_15_min_bull": 0,
+                        "first_15_min_bear": 0,
+                        "first_20_min_bull": 0,
+                        "first_20_min_bear": 0,
+                        "first_30_min_bull": 0,
+                        "first_30_min_bear": 0,
+                    }
+
+                # Update the full hour trend counts
+                if hour_candle_type == "Bull":
+                    patterns[pattern_name]["full_hour_bull"] += 1
+                else:
+                    patterns[pattern_name]["full_hour_bear"] += 1
+
+                # Check the first 10 minutes (00:00 to 09:59)
+                first_10_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=10))]
+                if len(first_10_min_candles) > 0:
+                    first_10_min_open = first_10_min_candles.iloc[0]['open']
+                    first_10_min_close = first_10_min_candles.iloc[-1]['close']
+                    first_10_min_trend = "Bull" if first_10_min_close > first_10_min_open else "Bear"
+                    if first_10_min_trend == "Bull":
+                        patterns[pattern_name]["first_10_min_bull"] += 1
+                    else:
+                        patterns[pattern_name]["first_10_min_bear"] += 1
+
+                # Check the first 15 minutes (00:00 to 14:59)
+                first_15_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=15))]
+                if len(first_15_min_candles) > 0:
+                    first_15_min_open = first_15_min_candles.iloc[0]['open']
+                    first_15_min_close = first_15_min_candles.iloc[-1]['close']
+                    first_15_min_trend = "Bull" if first_15_min_close > first_15_min_open else "Bear"
+                    if first_15_min_trend == "Bull":
+                        patterns[pattern_name]["first_15_min_bull"] += 1
+                    else:
+                        patterns[pattern_name]["first_15_min_bear"] += 1
+
+                # Check the first 20 minutes (00:00 to 19:59)
+                first_20_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=20))]
+                if len(first_20_min_candles) > 0:
+                    first_20_min_open = first_20_min_candles.iloc[0]['open']
+                    first_20_min_close = first_20_min_candles.iloc[-1]['close']
+                    first_20_min_trend = "Bull" if first_20_min_close > first_20_min_open else "Bear"
+                    if first_20_min_trend == "Bull":
+                        patterns[pattern_name]["first_20_min_bull"] += 1
+                    else:
+                        patterns[pattern_name]["first_20_min_bear"] += 1
+
+                # Check the first 30 minutes (00:00 to 29:59)
+                first_30_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=30))]
+                if len(first_30_min_candles) > 0:
+                    first_30_min_open = first_30_min_candles.iloc[0]['open']
+                    first_30_min_close = first_30_min_candles.iloc[-1]['close']
+                    first_30_min_trend = "Bull" if first_30_min_close > first_30_min_open else "Bear"
+                    if first_30_min_trend == "Bull":
+                        patterns[pattern_name]["first_30_min_bull"] += 1
+                    else:
+                        patterns[pattern_name]["first_30_min_bear"] += 1
 
     # Calculate percentage ratios for each pattern
     for pattern, counts in patterns.items():
-        total = counts["Bull"] + counts["Bear"]
-        if total > 0:
-            bull_ratio = (counts["Bull"] / total) * 100
-            bear_ratio = (counts["Bear"] / total) * 100
-            print(f"Pattern: {pattern}, Full Hour Bull: {counts['Bull']}, Full Hour Bear: {counts['Bear']}, Buy Ratio: {bull_ratio:.2f}%, Sell Ratio: {bear_ratio:.2f}%")
+        # Full hour trend
+        full_hour_total = counts["full_hour_bull"] + counts["full_hour_bear"]
+        full_hour_bull_ratio = (counts["full_hour_bull"] / full_hour_total) * 100 if full_hour_total > 0 else 0
+        full_hour_bear_ratio = (counts["full_hour_bear"] / full_hour_total) * 100 if full_hour_total > 0 else 0
 
-def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear):
+        # First 10 minutes trend
+        first_10_min_total = counts["first_10_min_bull"] + counts["first_10_min_bear"]
+        first_10_min_bull_ratio = (counts["first_10_min_bull"] / first_10_min_total) * 100 if first_10_min_total > 0 else 0
+        first_10_min_bear_ratio = (counts["first_10_min_bear"] / first_10_min_total) * 100 if first_10_min_total > 0 else 0
+
+        # First 15 minutes trend
+        first_15_min_total = counts["first_15_min_bull"] + counts["first_15_min_bear"]
+        first_15_min_bull_ratio = (counts["first_15_min_bull"] / first_15_min_total) * 100 if first_15_min_total > 0 else 0
+        first_15_min_bear_ratio = (counts["first_15_min_bear"] / first_15_min_total) * 100 if first_15_min_total > 0 else 0
+
+        # First 20 minutes trend
+        first_20_min_total = counts["first_20_min_bull"] + counts["first_20_min_bear"]
+        first_20_min_bull_ratio = (counts["first_20_min_bull"] / first_20_min_total) * 100 if first_20_min_total > 0 else 0
+        first_20_min_bear_ratio = (counts["first_20_min_bear"] / first_20_min_total) * 100 if first_20_min_total > 0 else 0
+
+        # First 30 minutes trend
+        first_30_min_total = counts["first_30_min_bull"] + counts["first_30_min_bear"]
+        first_30_min_bull_ratio = (counts["first_30_min_bull"] / first_30_min_total) * 100 if first_30_min_total > 0 else 0
+        first_30_min_bear_ratio = (counts["first_30_min_bear"] / first_30_min_total) * 100 if first_30_min_total > 0 else 0
+
+        # Print the results
+        print(f"Pattern: {pattern}")
+        print(f"Full Hour Trend: Bull={counts['full_hour_bull']}, Bear={counts['full_hour_bear']}, Bull Ratio={full_hour_bull_ratio:.2f}%, Bear Ratio={full_hour_bear_ratio:.2f}%")
+        print(f"First 10 Minutes: Bull={counts['first_10_min_bull']}, Bear={counts['first_10_min_bear']}, Bull Ratio={first_10_min_bull_ratio:.2f}%, Bear Ratio={first_10_min_bear_ratio:.2f}%")
+        print(f"First 15 Minutes: Bull={counts['first_15_min_bull']}, Bear={counts['first_15_min_bear']}, Bull Ratio={first_15_min_bull_ratio:.2f}%, Bear Ratio={first_15_min_bear_ratio:.2f}%")
+        print(f"First 20 Minutes: Bull={counts['first_20_min_bull']}, Bear={counts['first_20_min_bear']}, Bull Ratio={first_20_min_bull_ratio:.2f}%, Bear Ratio={first_20_min_bear_ratio:.2f}%")
+        print(f"First 30 Minutes: Bull={counts['first_30_min_bull']}, Bear={counts['first_30_min_bear']}, Bull Ratio={first_30_min_bull_ratio:.2f}%, Bear Ratio={first_30_min_bear_ratio:.2f}%")
+        print("-" * 50)
+
+def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear):
     """
     Store the pattern in the MySQL database.
     """
     # Check if the pattern already exists
     cursor.execute("""
-        SELECT full_hour_bull, full_hour_bear FROM patterns 
+        SELECT full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear FROM patterns 
+        WHERE pattern_name = %s AND three_minute_trend = %s
+    """, (pattern_name, three_minute_trend))
+
+def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear):
+    """
+    Store the pattern in the MySQL database.
+    """
+    # Check if the pattern already exists
+    cursor.execute("""
+        SELECT full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear FROM patterns 
         WHERE pattern_name = %s AND three_minute_trend = %s
     """, (pattern_name, three_minute_trend))
     result = cursor.fetchone()
 
     if result:
         # Update the counts if the pattern exists
-        new_bull = result[0] + full_hour_bull
-        new_bear = result[1] + full_hour_bear
+        new_full_hour_bull = result[0] + full_hour_bull
+        new_full_hour_bear = result[1] + full_hour_bear
+        new_first_10_min_bull = result[2] + first_10_min_bull
+        new_first_10_min_bear = result[3] + first_10_min_bear
+        new_first_15_min_bull = result[4] + first_15_min_bull
+        new_first_15_min_bear = result[5] + first_15_min_bear
+        new_first_20_min_bull = result[6] + first_20_min_bull
+        new_first_20_min_bear = result[7] + first_20_min_bear
+        new_first_30_min_bull = result[8] + first_30_min_bull
+        new_first_30_min_bear = result[9] + first_30_min_bear
+
         cursor.execute("""
             UPDATE patterns 
-            SET full_hour_bull = %s, full_hour_bear = %s 
+            SET full_hour_bull = %s, full_hour_bear = %s,
+                first_10_min_bull = %s, first_10_min_bear = %s,
+                first_15_min_bull = %s, first_15_min_bear = %s,
+                first_20_min_bull = %s, first_20_min_bear = %s,
+                first_30_min_bull = %s, first_30_min_bear = %s
             WHERE pattern_name = %s AND three_minute_trend = %s
-        """, (new_bull, new_bear, pattern_name, three_minute_trend))
+        """, (
+            new_full_hour_bull, new_full_hour_bear,
+            new_first_10_min_bull, new_first_10_min_bear,
+            new_first_15_min_bull, new_first_15_min_bear,
+            new_first_20_min_bull, new_first_20_min_bear,
+            new_first_30_min_bull, new_first_30_min_bear,
+            pattern_name, three_minute_trend
+        ))
     else:
         # Insert a new pattern if it doesn't exist
         cursor.execute("""
-            INSERT INTO patterns (pattern_name, three_minute_trend, full_hour_bull, full_hour_bear) 
-            VALUES (%s, %s, %s, %s)
-        """, (pattern_name, three_minute_trend, full_hour_bull, full_hour_bear))
+            INSERT INTO patterns (
+                pattern_name, three_minute_trend,
+                full_hour_bull, full_hour_bear,
+                first_10_min_bull, first_10_min_bear,
+                first_15_min_bull, first_15_min_bear,
+                first_20_min_bull, first_20_min_bear,
+                first_30_min_bull, first_30_min_bear
+            ) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            pattern_name, three_minute_trend,
+            full_hour_bull, full_hour_bear,
+            first_10_min_bull, first_10_min_bear,
+            first_15_min_bull, first_15_min_bear,
+            first_20_min_bull, first_20_min_bear,
+            first_30_min_bull, first_30_min_bear
+        ))
     db.commit()
 
 def main():

@@ -10,7 +10,7 @@ mt5.initialize()
 db_host = 'localhost'
 db_user = 'MudangXh20'
 db_password = '*'
-db_name = ''
+db_name = 'your_database_name'  # Replace with your actual database name
 
 # Connect to MySQL database
 connection = pymysql.connect(host=db_host, user=db_user, password=db_password, database=db_name)
@@ -70,15 +70,16 @@ def meets_conditions(body, longer_wick, shorter_wick, min_longer_wick, min_diff_
     return True
 
 # Function to determine if the three-minute sequence is bullish or bearish
-def is_bullish_sequence(candle59, candle01):
-    return candle01['close'] > candle59['open']
+def is_bullish_sequence(candle59, candle01, min_pipettes_3min):
+    price_diff = abs(candle01['close'] - candle59['open'])
+    return price_diff >= min_pipettes_3min and candle01['close'] > candle59['open']
 
 # Function to determine if the full hour is bullish or bearish
 def is_bullish_hour(candle_start, candle_end):
     return candle_end['close'] > candle_start['open']
 
 # Main function to process data
-def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body):
+def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body, min_pipettes_3min):
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=1000)
     
@@ -117,7 +118,7 @@ def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_
                 combined_pattern = f"{pattern59}_{pattern00}_{pattern01}"
                 
                 # Determine if the three-minute sequence is bullish or bearish
-                is_bullish_sequence_result = is_bullish_sequence(candle59, candle01)
+                is_bullish_sequence_result = is_bullish_sequence(candle59, candle01, min_pipettes_3min)
                 three_minute_trend = 'buy' if is_bullish_sequence_result else 'sell'
                 
                 # Determine if the full hour is bullish or bearish
@@ -178,8 +179,9 @@ if __name__ == "__main__":
     min_diff_body_shorter = 0  # Example minimum difference between body and shorter wick
     min_diff_longer_shorter = 3  # Example minimum difference between longer and shorter wick
     min_diff_longer_body = 2  # Example minimum difference between longer wick and body
+    min_pipettes_3min = 5  # Example minimum pipettes for 3-minute trend
     
-    pattern_data = process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body)
+    pattern_data = process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body, min_pipettes_3min)
     save_patterns_to_db(pattern_data)
     
     cursor.close()

@@ -46,6 +46,14 @@ def create_table(conn):
             five_minute_trend ENUM('bull', 'bear'),
             full_hour_bull_count INT DEFAULT 0,
             full_hour_bear_count INT DEFAULT 0,
+            first_10_min_bull_count INT DEFAULT 0,
+            first_10_min_bear_count INT DEFAULT 0,
+            first_15_min_bull_count INT DEFAULT 0,
+            first_15_min_bear_count INT DEFAULT 0,
+            first_20_min_bull_count INT DEFAULT 0,
+            first_20_min_bear_count INT DEFAULT 0,
+            first_30_min_bull_count INT DEFAULT 0,
+            first_30_min_bear_count INT DEFAULT 0,
             PRIMARY KEY (pattern_name, five_minute_trend)
         )
     ''')
@@ -101,13 +109,25 @@ def analyze_hourly_data(data):
             # Determine full-hour trend: compare open at 00th minute to close at 59th minute
             full_hour_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 59th minute close
             
+            # Determine first 10 minutes trend: compare open at 00th minute to close at 09th minute
+            first_10_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 09th minute close
+            
+            # Determine first 15 minutes trend: compare open at 00th minute to close at 14th minute
+            first_15_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 14th minute close
+            
+            # Determine first 20 minutes trend: compare open at 00th minute to close at 19th minute
+            first_20_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 19th minute close
+            
+            # Determine first 30 minutes trend: compare open at 00th minute to close at 29th minute
+            first_30_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 29th minute close
+            
             pattern_name = '-'.join(patterns_in_hour)
-            patterns.append((pattern_name, five_minute_trend, full_hour_trend))
+            patterns.append((pattern_name, five_minute_trend, full_hour_trend, first_10_min_trend, first_15_min_trend, first_20_min_trend, first_30_min_trend))
     return patterns
 
 def save_to_db(conn, patterns):
     cursor = conn.cursor()
-    for pattern_name, five_minute_trend, full_hour_trend in patterns:
+    for pattern_name, five_minute_trend, full_hour_trend, first_10_min_trend, first_15_min_trend, first_20_min_trend, first_30_min_trend in patterns:
         # Update full-hour bull/bear count based on the trend
         if full_hour_trend == 'bull':
             cursor.execute('''
@@ -121,6 +141,62 @@ def save_to_db(conn, patterns):
                 VALUES (%s, %s, 1)
                 ON DUPLICATE KEY UPDATE full_hour_bear_count = full_hour_bear_count + 1
             ''', (pattern_name, five_minute_trend))
+        
+        # Update first 10 minutes bull/bear count based on the trend
+        if first_10_min_trend == 'bull':
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_10_min_bull_count = first_10_min_bull_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        else:
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_10_min_bear_count = first_10_min_bear_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        
+        # Update first 15 minutes bull/bear count based on the trend
+        if first_15_min_trend == 'bull':
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_15_min_bull_count = first_15_min_bull_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        else:
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_15_min_bear_count = first_15_min_bear_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        
+        # Update first 20 minutes bull/bear count based on the trend
+        if first_20_min_trend == 'bull':
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_20_min_bull_count = first_20_min_bull_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        else:
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_20_min_bear_count = first_20_min_bear_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        
+        # Update first 30 minutes bull/bear count based on the trend
+        if first_30_min_trend == 'bull':
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_30_min_bull_count = first_30_min_bull_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
+        else:
+            cursor.execute('''
+                UPDATE candlestick_patterns
+                SET first_30_min_bear_count = first_30_min_bear_count + 1
+                WHERE pattern_name = %s AND five_minute_trend = %s
+            ''', (pattern_name, five_minute_trend))
     conn.commit()
 
 def calculate_bull_bear_ratio(conn):
@@ -129,16 +205,53 @@ def calculate_bull_bear_ratio(conn):
         SELECT pattern_name,
                five_minute_trend,
                full_hour_bull_count,
-               full_hour_bear_count
+               full_hour_bear_count,
+               first_10_min_bull_count,
+               first_10_min_bear_count,
+               first_15_min_bull_count,
+               first_15_min_bear_count,
+               first_20_min_bull_count,
+               first_20_min_bear_count,
+               first_30_min_bull_count,
+               first_30_min_bear_count
         FROM candlestick_patterns
     ''')
     results = cursor.fetchall()
-    for pattern_name, five_minute_trend, full_hour_bull_count, full_hour_bear_count in results:
-        total = full_hour_bull_count + full_hour_bear_count
-        if total > 0:
-            bull_ratio = (full_hour_bull_count / total) * 100
-            bear_ratio = (full_hour_bear_count / total) * 100
-            print(f'Pattern: {pattern_name}, 5-Minute Trend: {five_minute_trend}, Buy: {full_hour_bull_count}, Sell: {full_hour_bear_count}, Buy Ratio: {bull_ratio:.2f}%, Sell Ratio: {bear_ratio:.2f}%')
+    for pattern_name, five_minute_trend, full_hour_bull_count, full_hour_bear_count, first_10_min_bull_count, first_10_min_bear_count, first_15_min_bull_count, first_15_min_bear_count, first_20_min_bull_count, first_20_min_bear_count, first_30_min_bull_count, first_30_min_bear_count in results:
+        # Calculate full-hour ratio
+        full_hour_total = full_hour_bull_count + full_hour_bear_count
+        if full_hour_total > 0:
+            full_hour_bull_ratio = (full_hour_bull_count / full_hour_total) * 100
+            full_hour_bear_ratio = (full_hour_bear_count / full_hour_total) * 100
+            print(f'Pattern: {pattern_name}, 5-Minute Trend: {five_minute_trend}, Full Hour Buy: {full_hour_bull_count}, Full Hour Sell: {full_hour_bear_count}, Full Hour Buy Ratio: {full_hour_bull_ratio:.2f}%, Full Hour Sell Ratio: {full_hour_bear_ratio:.2f}%')
+        
+        # Calculate first 10 minutes ratio
+        first_10_min_total = first_10_min_bull_count + first_10_min_bear_count
+        if first_10_min_total > 0:
+            first_10_min_bull_ratio = (first_10_min_bull_count / first_10_min_total) * 100
+            first_10_min_bear_ratio = (first_10_min_bear_count / first_10_min_total) * 100
+            print(f'Pattern: {pattern_name}, 5-Minute Trend: {five_minute_trend}, First 10 Min Buy: {first_10_min_bull_count}, First 10 Min Sell: {first_10_min_bear_count}, First 10 Min Buy Ratio: {first_10_min_bull_ratio:.2f}%, First 10 Min Sell Ratio: {first_10_min_bear_ratio:.2f}%')
+        
+        # Calculate first 15 minutes ratio
+        first_15_min_total = first_15_min_bull_count + first_15_min_bear_count
+        if first_15_min_total > 0:
+            first_15_min_bull_ratio = (first_15_min_bull_count / first_15_min_total) * 100
+            first_15_min_bear_ratio = (first_15_min_bear_count / first_15_min_total) * 100
+            print(f'Pattern: {pattern_name}, 5-Minute Trend: {five_minute_trend}, First 15 Min Buy: {first_15_min_bull_count}, First 15 Min Sell: {first_15_min_bear_count}, First 15 Min Buy Ratio: {first_15_min_bull_ratio:.2f}%, First 15 Min Sell Ratio: {first_15_min_bear_ratio:.2f}%')
+        
+        # Calculate first 20 minutes ratio
+        first_20_min_total = first_20_min_bull_count + first_20_min_bear_count
+        if first_20_min_total > 0:
+            first_20_min_bull_ratio = (first_20_min_bull_count / first_20_min_total) * 100
+            first_20_min_bear_ratio = (first_20_min_bear_count / first_20_min_total) * 100
+            print(f'Pattern: {pattern_name}, 5-Minute Trend: {five_minute_trend}, First 20 Min Buy: {first_20_min_bull_count}, First 20 Min Sell: {first_20_min_bear_count}, First 20 Min Buy Ratio: {first_20_min_bull_ratio:.2f}%, First 20 Min Sell Ratio: {first_20_min_bear_ratio:.2f}%')
+        
+        # Calculate first 30 minutes ratio
+        first_30_min_total = first_30_min_bull_count + first_30_min_bear_count
+        if first_30_min_total > 0:
+            first_30_min_bull_ratio = (first_30_min_bull_count / first_30_min_total) * 100
+            first_30_min_bear_ratio = (first_30_min_bear_count / first_30_min_total) * 100
+            print(f'Pattern: {pattern_name}, 5-Minute Trend: {five_minute_trend}, First 30 Min Buy: {first_30_min_bull_count}, First 30 Min Sell: {first_30_min_bear_count}, First 30 Min Buy Ratio: {first_30_min_bull_ratio:.2f}%, First 30 Min Sell Ratio: {first_30_min_bear_ratio:.2f}%')
 
 def fetch_data_from_mt5(symbol, timeframe, start_time, end_time):
     # Initialize MT5 connection
