@@ -74,8 +74,8 @@ def is_bullish_sequence(candle59, candle01, min_pipettes_3min):
     price_diff = abs(candle01['close'] - candle59['open'])
     return price_diff >= min_pipettes_3min and candle01['close'] > candle59['open']
 
-# Function to determine if the full hour is bullish or bearish
-def is_bullish_hour(candle_start, candle_end):
+# Function to determine if a time interval is bullish or bearish
+def is_bullish_interval(candle_start, candle_end):
     return candle_end['close'] > candle_start['open']
 
 # Main function to process data
@@ -121,22 +121,38 @@ def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_
                 is_bullish_sequence_result = is_bullish_sequence(candle59, candle01, min_pipettes_3min)
                 three_minute_trend = 'buy' if is_bullish_sequence_result else 'sell'
                 
-                # Determine if the full hour is bullish or bearish
-                candle_start = group.iloc[0]  # First candle of the hour (00:00)
-                candle_end = group.iloc[-1]   # Last candle of the hour (59:59)
-                is_bullish_hour_result = is_bullish_hour(candle_start, candle_end)
+                # Determine trends for different intervals
+                intervals = {
+                    'full_hour': (0, -1),  # 00:00 to 59:59
+                    'first_10_min': (0, 9),  # 00:00 to 09:59
+                    'first_15_min': (0, 14),  # 00:00 to 14:59
+                    'first_20_min': (0, 19),  # 00:00 to 19:59
+                    'first_30_min': (0, 29)   # 00:00 to 29:59
+                }
                 
                 # Create a unique identifier combining pattern and 3-minute trend
                 unique_identifier = f"{combined_pattern}_{three_minute_trend}"
                 
-                # Update pattern data
+                # Initialize pattern data if not already present
                 if unique_identifier not in pattern_data:
-                    pattern_data[unique_identifier] = {'bull_count': 0, 'bear_count': 0}
+                    pattern_data[unique_identifier] = {
+                        'full_hour': {'bull_count': 0, 'bear_count': 0},
+                        'first_10_min': {'bull_count': 0, 'bear_count': 0},
+                        'first_15_min': {'bull_count': 0, 'bear_count': 0},
+                        'first_20_min': {'bull_count': 0, 'bear_count': 0},
+                        'first_30_min': {'bull_count': 0, 'bear_count': 0}
+                    }
                 
-                if is_bullish_hour_result:
-                    pattern_data[unique_identifier]['bull_count'] += 1
-                else:
-                    pattern_data[unique_identifier]['bear_count'] += 1
+                # Update counts for each interval
+                for interval, (start_idx, end_idx) in intervals.items():
+                    candle_start = group.iloc[start_idx]
+                    candle_end = group.iloc[end_idx]
+                    is_bullish = is_bullish_interval(candle_start, candle_end)
+                    
+                    if is_bullish:
+                        pattern_data[unique_identifier][interval]['bull_count'] += 1
+                    else:
+                        pattern_data[unique_identifier][interval]['bear_count'] += 1
     
     return pattern_data
 
@@ -147,6 +163,7 @@ def save_patterns_to_db(pattern_data):
         id INT AUTO_INCREMENT PRIMARY KEY,
         pattern_name VARCHAR(255),
         three_minute_trend VARCHAR(50),
+        interval_type VARCHAR(50),
         bull_count INT,
         bear_count INT,
         bull_ratio FLOAT,
@@ -157,17 +174,19 @@ def save_patterns_to_db(pattern_data):
     
     for unique_identifier, data in pattern_data.items():
         pattern_name, three_minute_trend = unique_identifier.rsplit('_', 1)
-        bull_count = data['bull_count']
-        bear_count = data['bear_count']
-        total = bull_count + bear_count
-        bull_ratio = (bull_count / total) * 100 if total > 0 else 0
-        bear_ratio = (bear_count / total) * 100 if total > 0 else 0
         
-        insert_query = """
-        INSERT INTO candlestick_patterns (pattern_name, three_minute_trend, bull_count, bear_count, bull_ratio, bear_ratio)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(insert_query, (pattern_name, three_minute_trend, bull_count, bear_count, bull_ratio, bear_ratio))
+        for interval_type, counts in data.items():
+            bull_count = counts['bull_count']
+            bear_count = counts['bear_count']
+            total = bull_count + bear_count
+            bull_ratio = (bull_count / total) * 100 if total > 0 else 0
+            bear_ratio = (bear_count / total) * 100 if total > 0 else 0
+            
+            insert_query = """
+            INSERT INTO candlestick_patterns (pattern_name, three_minute_trend, interval_type, bull_count, bear_count, bull_ratio, bear_ratio)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(insert_query, (pattern_name, three_minute_trend, interval_type, bull_count, bear_count, bull_ratio, bear_ratio))
     
     connection.commit()
 
