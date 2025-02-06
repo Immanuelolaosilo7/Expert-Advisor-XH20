@@ -131,11 +131,29 @@ def assign_pattern_name(crossings, decimal_group, greater_less, tens_count, unit
     return pattern_name
 
 # Analyze successor candle (bull/bear) and calculate pip difference
-def analyze_successor_candle(df):
-    df['successor_bull'] = df['close'].shift(-1) > df['open'].shift(-1)
-    df['successor_bear'] = df['close'].shift(-1) < df['open'].shift(-1)
-    df['successor_ratio'] = df['successor_bull'].astype(int) / (df['successor_bull'].astype(int) + df['successor_bear'].astype(int))
-    df['successor_pip'] = (df['close'].shift(-1) - df['open'].shift(-1)) * 10000  # Calculate pip difference
+def analyze_successor_candle(df, min_pipettes=10):
+    # Calculate pipettes difference
+    df['successor_pipettes'] = (df['close'].shift(-1) - df['open'].shift(-1)) * 10000  # Convert to pipettes
+
+    # Filter successor candles based on minimum pipettes requirement
+    df['successor_valid'] = df['successor_pipettes'].abs() >= min_pipettes
+
+    # Count bull and bear successor candles
+    df['successor_bull'] = (df['close'].shift(-1) > df['open'].shift(-1)) & df['successor_valid']
+    df['successor_bear'] = (df['close'].shift(-1) < df['open'].shift(-1)) & df['successor_valid']
+
+    # Calculate bull/bear ratio as a percentage
+    total_valid = df['successor_valid'].sum()
+    if total_valid > 0:
+        bull_ratio = df['successor_bull'].sum() / total_valid * 100
+        bear_ratio = df['successor_bear'].sum() / total_valid * 100
+    else:
+        bull_ratio, bear_ratio = 0, 0
+
+    # Add ratio to DataFrame
+    df['successor_bull_ratio'] = bull_ratio
+    df['successor_bear_ratio'] = bear_ratio
+
     return df
 
 # Visualize candlestick data
@@ -182,8 +200,8 @@ def main():
         axis=1
     )
 
-    # Analyze successor candles
-    df = analyze_successor_candle(df)
+    # Analyze successor candles with minimum pipettes requirement
+    df = analyze_successor_candle(df, min_pipettes=10)
 
     # Connect to MySQL
     engine = connect_to_mysql()
