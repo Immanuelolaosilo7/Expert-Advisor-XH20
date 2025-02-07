@@ -8,7 +8,7 @@ mt5.initialize()
 
 # Database connection details
 db_host = 'localhost'
-db_user = 'MudangXh20'
+db_user = 'Mudang'
 db_password = '*'
 db_name = 'your_database_name'  # Replace with your actual database name
 
@@ -78,8 +78,13 @@ def is_bullish_sequence(candle59, candle01, min_pipettes_3min):
 def is_bullish_interval(candle_start, candle_end):
     return candle_end['close'] > candle_start['open']
 
+# Function to check if the price movement meets the minimum pipettes requirement
+def meets_min_pipettes(candle_start, candle_end, min_pipettes):
+    price_diff = abs(candle_end['close'] - candle_start['open'])
+    return price_diff >= min_pipettes
+
 # Main function to process data
-def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body, min_pipettes_3min):
+def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body, min_pipettes_3min, min_pipettes_intervals):
     end_time = datetime.now()
     start_time = end_time - timedelta(hours=1000)
     
@@ -123,11 +128,11 @@ def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_
                 
                 # Determine trends for different intervals
                 intervals = {
-                    'full_hour': (0, -1),  # 00:00 to 59:59
-                    'first_10_min': (0, 9),  # 00:00 to 09:59
-                    'first_15_min': (0, 14),  # 00:00 to 14:59
-                    'first_20_min': (0, 19),  # 00:00 to 19:59
-                    'first_30_min': (0, 29)   # 00:00 to 29:59
+                    'full_hour': (0, -1, min_pipettes_intervals['full_hour']),  # 00:00 to 59:59
+                    'first_10_min': (0, 9, min_pipettes_intervals['first_10_min']),  # 00:00 to 09:59
+                    'first_15_min': (0, 14, min_pipettes_intervals['first_15_min']),  # 00:00 to 14:59
+                    'first_20_min': (0, 19, min_pipettes_intervals['first_20_min']),  # 00:00 to 19:59
+                    'first_30_min': (0, 29, min_pipettes_intervals['first_30_min'])   # 00:00 to 29:59
                 }
                 
                 # Create a unique identifier combining pattern and 3-minute trend
@@ -144,15 +149,18 @@ def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_
                     }
                 
                 # Update counts for each interval
-                for interval, (start_idx, end_idx) in intervals.items():
+                for interval, (start_idx, end_idx, min_pipettes) in intervals.items():
                     candle_start = group.iloc[start_idx]
                     candle_end = group.iloc[end_idx]
-                    is_bullish = is_bullish_interval(candle_start, candle_end)
                     
-                    if is_bullish:
-                        pattern_data[unique_identifier][interval]['bull_count'] += 1
-                    else:
-                        pattern_data[unique_identifier][interval]['bear_count'] += 1
+                    # Check if the interval meets the minimum pipettes requirement
+                    if meets_min_pipettes(candle_start, candle_end, min_pipettes):
+                        is_bullish = is_bullish_interval(candle_start, candle_end)
+                        
+                        if is_bullish:
+                            pattern_data[unique_identifier][interval]['bull_count'] += 1
+                        else:
+                            pattern_data[unique_identifier][interval]['bear_count'] += 1
     
     return pattern_data
 
@@ -200,7 +208,16 @@ if __name__ == "__main__":
     min_diff_longer_body = 2  # Example minimum difference between longer wick and body
     min_pipettes_3min = 5  # Example minimum pipettes for 3-minute trend
     
-    pattern_data = process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body, min_pipettes_3min)
+    # Minimum pipettes requirements for intervals
+    min_pipettes_intervals = {
+        'full_hour': 10,  # Minimum pipettes for full hour
+        'first_10_min': 2,  # Minimum pipettes for first 10 minutes
+        'first_15_min': 3,  # Minimum pipettes for first 15 minutes
+        'first_20_min': 4,  # Minimum pipettes for first 20 minutes
+        'first_30_min': 5   # Minimum pipettes for first 30 minutes
+    }
+    
+    pattern_data = process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_diff_longer_shorter, min_diff_longer_body, min_pipettes_3min, min_pipettes_intervals)
     save_patterns_to_db(pattern_data)
     
     cursor.close()

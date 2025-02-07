@@ -11,6 +11,7 @@ MIN_PIPETTES_WICK = 5
 MIN_PIPETTES_DIFF = 3
 MIN_PIPETTES_00_59 = 5  # Closing price of 00 to opening price of 59
 MIN_PIPETTES_01_59 = 5  # Closing price of 01 to opening price of 59
+MIN_PIPETTES_INTERVAL = 5  # Minimum pipettes for intervals (10, 15, 20, 30 minutes, and full hour)
 
 # Initialize MT5 connection
 if not mt5.initialize():
@@ -171,79 +172,94 @@ def analyze_historical_data(data):
             # Fetch all candles for the current hour (00:00 to 59:59)
             hour_candles = data[(data['time'] >= hour_start) & (data['time'] < hour_end)]
 
-            # Determine if the hour is bull or bear
+            # Initialize counts for the current pattern
+            if identifier not in patterns:
+                patterns[identifier] = {
+                    "full_hour_bull": 0,
+                    "full_hour_bear": 0,
+                    "first_10_min_bull": 0,
+                    "first_10_min_bear": 0,
+                    "first_15_min_bull": 0,
+                    "first_15_min_bear": 0,
+                    "first_20_min_bull": 0,
+                    "first_20_min_bear": 0,
+                    "first_30_min_bull": 0,
+                    "first_30_min_bear": 0,
+                }
+
+            # Determine if the hour is bull or bear (full hour)
             if len(hour_candles) > 0:
                 hour_open = hour_candles.iloc[0]['open']
                 hour_close = hour_candles.iloc[-1]['close']
-                hour_candle_type = "Bull" if hour_close > hour_open else "Bear"
+                hour_pipettes = abs(hour_close - hour_open)
 
-                # Create a unique pattern name with the 3-minute trend
-                pattern_name = f"{identifier}_{three_minute_trend}"
+                # Check if the full hour meets the minimum pipettes requirement
+                if hour_pipettes >= MIN_PIPETTES_INTERVAL:
+                    hour_candle_type = "Bull" if hour_close > hour_open else "Bear"
+                    if hour_candle_type == "Bull":
+                        patterns[identifier]["full_hour_bull"] += 1
+                    else:
+                        patterns[identifier]["full_hour_bear"] += 1
 
-                # Initialize the pattern if it doesn't exist
-                if pattern_name not in patterns:
-                    patterns[pattern_name] = {
-                        "full_hour_bull": 0,
-                        "full_hour_bear": 0,
-                        "first_10_min_bull": 0,
-                        "first_10_min_bear": 0,
-                        "first_15_min_bull": 0,
-                        "first_15_min_bear": 0,
-                        "first_20_min_bull": 0,
-                        "first_20_min_bear": 0,
-                        "first_30_min_bull": 0,
-                        "first_30_min_bear": 0,
-                    }
+            # Check the first 10 minutes (00:00 to 09:59)
+            first_10_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=10))]
+            if len(first_10_min_candles) > 0:
+                first_10_min_open = first_10_min_candles.iloc[0]['open']
+                first_10_min_close = first_10_min_candles.iloc[-1]['close']
+                first_10_min_pipettes = abs(first_10_min_close - first_10_min_open)
 
-                # Update the full hour trend counts
-                if hour_candle_type == "Bull":
-                    patterns[pattern_name]["full_hour_bull"] += 1
-                else:
-                    patterns[pattern_name]["full_hour_bear"] += 1
-
-                # Check the first 10 minutes (00:00 to 09:59)
-                first_10_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=10))]
-                if len(first_10_min_candles) > 0:
-                    first_10_min_open = first_10_min_candles.iloc[0]['open']
-                    first_10_min_close = first_10_min_candles.iloc[-1]['close']
+                # Check if the first 10 minutes meet the minimum pipettes requirement
+                if first_10_min_pipettes >= MIN_PIPETTES_INTERVAL:
                     first_10_min_trend = "Bull" if first_10_min_close > first_10_min_open else "Bear"
                     if first_10_min_trend == "Bull":
-                        patterns[pattern_name]["first_10_min_bull"] += 1
+                        patterns[identifier]["first_10_min_bull"] += 1
                     else:
-                        patterns[pattern_name]["first_10_min_bear"] += 1
+                        patterns[identifier]["first_10_min_bear"] += 1
 
-                # Check the first 15 minutes (00:00 to 14:59)
-                first_15_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=15))]
-                if len(first_15_min_candles) > 0:
-                    first_15_min_open = first_15_min_candles.iloc[0]['open']
-                    first_15_min_close = first_15_min_candles.iloc[-1]['close']
+            # Check the first 15 minutes (00:00 to 14:59)
+            first_15_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=15))]
+            if len(first_15_min_candles) > 0:
+                first_15_min_open = first_15_min_candles.iloc[0]['open']
+                first_15_min_close = first_15_min_candles.iloc[-1]['close']
+                first_15_min_pipettes = abs(first_15_min_close - first_15_min_open)
+
+                # Check if the first 15 minutes meet the minimum pipettes requirement
+                if first_15_min_pipettes >= MIN_PIPETTES_INTERVAL:
                     first_15_min_trend = "Bull" if first_15_min_close > first_15_min_open else "Bear"
                     if first_15_min_trend == "Bull":
-                        patterns[pattern_name]["first_15_min_bull"] += 1
+                        patterns[identifier]["first_15_min_bull"] += 1
                     else:
-                        patterns[pattern_name]["first_15_min_bear"] += 1
+                        patterns[identifier]["first_15_min_bear"] += 1
 
-                # Check the first 20 minutes (00:00 to 19:59)
-                first_20_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=20))]
-                if len(first_20_min_candles) > 0:
-                    first_20_min_open = first_20_min_candles.iloc[0]['open']
-                    first_20_min_close = first_20_min_candles.iloc[-1]['close']
+            # Check the first 20 minutes (00:00 to 19:59)
+            first_20_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=20))]
+            if len(first_20_min_candles) > 0:
+                first_20_min_open = first_20_min_candles.iloc[0]['open']
+                first_20_min_close = first_20_min_candles.iloc[-1]['close']
+                first_20_min_pipettes = abs(first_20_min_close - first_20_min_open)
+
+                # Check if the first 20 minutes meet the minimum pipettes requirement
+                if first_20_min_pipettes >= MIN_PIPETTES_INTERVAL:
                     first_20_min_trend = "Bull" if first_20_min_close > first_20_min_open else "Bear"
                     if first_20_min_trend == "Bull":
-                        patterns[pattern_name]["first_20_min_bull"] += 1
+                        patterns[identifier]["first_20_min_bull"] += 1
                     else:
-                        patterns[pattern_name]["first_20_min_bear"] += 1
+                        patterns[identifier]["first_20_min_bear"] += 1
 
-                # Check the first 30 minutes (00:00 to 29:59)
-                first_30_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=30))]
-                if len(first_30_min_candles) > 0:
-                    first_30_min_open = first_30_min_candles.iloc[0]['open']
-                    first_30_min_close = first_30_min_candles.iloc[-1]['close']
+            # Check the first 30 minutes (00:00 to 29:59)
+            first_30_min_candles = hour_candles[(hour_candles['time'] >= hour_start) & (hour_candles['time'] < hour_start + timedelta(minutes=30))]
+            if len(first_30_min_candles) > 0:
+                first_30_min_open = first_30_min_candles.iloc[0]['open']
+                first_30_min_close = first_30_min_candles.iloc[-1]['close']
+                first_30_min_pipettes = abs(first_30_min_close - first_30_min_open)
+
+                # Check if the first 30 minutes meet the minimum pipettes requirement
+                if first_30_min_pipettes >= MIN_PIPETTES_INTERVAL:
                     first_30_min_trend = "Bull" if first_30_min_close > first_30_min_open else "Bear"
                     if first_30_min_trend == "Bull":
-                        patterns[pattern_name]["first_30_min_bull"] += 1
+                        patterns[identifier]["first_30_min_bull"] += 1
                     else:
-                        patterns[pattern_name]["first_30_min_bear"] += 1
+                        patterns[identifier]["first_30_min_bear"] += 1
 
     # Calculate percentage ratios for each pattern
     for pattern, counts in patterns.items():
@@ -280,16 +296,6 @@ def analyze_historical_data(data):
         print(f"First 20 Minutes: Bull={counts['first_20_min_bull']}, Bear={counts['first_20_min_bear']}, Bull Ratio={first_20_min_bull_ratio:.2f}%, Bear Ratio={first_20_min_bear_ratio:.2f}%")
         print(f"First 30 Minutes: Bull={counts['first_30_min_bull']}, Bear={counts['first_30_min_bear']}, Bull Ratio={first_30_min_bull_ratio:.2f}%, Bear Ratio={first_30_min_bear_ratio:.2f}%")
         print("-" * 50)
-
-def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear):
-    """
-    Store the pattern in the MySQL database.
-    """
-    # Check if the pattern already exists
-    cursor.execute("""
-        SELECT full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear FROM patterns 
-        WHERE pattern_name = %s AND three_minute_trend = %s
-    """, (pattern_name, three_minute_trend))
 
 def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear):
     """

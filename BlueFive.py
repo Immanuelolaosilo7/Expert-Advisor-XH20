@@ -6,9 +6,9 @@ from datetime import datetime, timedelta
 # Database connection details
 db_config = {
     'user': 'MudangXh20',
-    'password': 'Olaosilo4u*',
+    'password': 'Olaos',
     'host': 'localhost',
-    'database': 'Xh20'
+    'database': '20'
 }
 
 # Minimum pipettes/pip values (can be set by the user)
@@ -17,6 +17,13 @@ MIN_LONG_WICK_PIPETTES = 3  # Example: 3 pipettes
 MIN_DIFF_BODY_LONG_WICK = 2  # Example: 2 pipettes
 MIN_DIFF_LONG_SHORT_WICK = 1  # Example: 1 pipette
 MIN_DIFF_BODY_SHORT_WICK = 0  # Example: 0 pipettes
+
+# Minimum pipettes for intervals
+MIN_PIPETTES_FULL_HOUR = 10  # Example: 10 pipettes for full hour
+MIN_PIPETTES_10_MIN = 5  # Example: 5 pipettes for first 10 minutes
+MIN_PIPETTES_15_MIN = 7  # Example: 7 pipettes for first 15 minutes
+MIN_PIPETTES_20_MIN = 8  # Example: 8 pipettes for first 20 minutes
+MIN_PIPETTES_30_MIN = 10  # Example: 10 pipettes for first 30 minutes
 
 # Candlestick pattern identifiers
 PATTERN_IDS = {
@@ -107,19 +114,39 @@ def analyze_hourly_data(data):
             five_minute_trend = 'bull' if hour_data[-1][1] > hour_data[0][0] else 'bear'
             
             # Determine full-hour trend: compare open at 00th minute to close at 59th minute
-            full_hour_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 59th minute close
+            full_hour_pipettes = abs(data[i+2][1] - data[i+2][0])  # Pipettes for full hour
+            if full_hour_pipettes >= MIN_PIPETTES_FULL_HOUR:
+                full_hour_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'
+            else:
+                full_hour_trend = None  # Skip if pipettes requirement is not met
             
             # Determine first 10 minutes trend: compare open at 00th minute to close at 09th minute
-            first_10_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 09th minute close
+            first_10_min_pipettes = abs(data[i+2][1] - data[i+2][0])  # Pipettes for first 10 minutes
+            if first_10_min_pipettes >= MIN_PIPETTES_10_MIN:
+                first_10_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'
+            else:
+                first_10_min_trend = None  # Skip if pipettes requirement is not met
             
             # Determine first 15 minutes trend: compare open at 00th minute to close at 14th minute
-            first_15_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 14th minute close
+            first_15_min_pipettes = abs(data[i+2][1] - data[i+2][0])  # Pipettes for first 15 minutes
+            if first_15_min_pipettes >= MIN_PIPETTES_15_MIN:
+                first_15_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'
+            else:
+                first_15_min_trend = None  # Skip if pipettes requirement is not met
             
             # Determine first 20 minutes trend: compare open at 00th minute to close at 19th minute
-            first_20_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 19th minute close
+            first_20_min_pipettes = abs(data[i+2][1] - data[i+2][0])  # Pipettes for first 20 minutes
+            if first_20_min_pipettes >= MIN_PIPETTES_20_MIN:
+                first_20_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'
+            else:
+                first_20_min_trend = None  # Skip if pipettes requirement is not met
             
             # Determine first 30 minutes trend: compare open at 00th minute to close at 29th minute
-            first_30_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'  # 00th minute open vs 29th minute close
+            first_30_min_pipettes = abs(data[i+2][1] - data[i+2][0])  # Pipettes for first 30 minutes
+            if first_30_min_pipettes >= MIN_PIPETTES_30_MIN:
+                first_30_min_trend = 'bull' if data[i+2][1] > data[i+2][0] else 'bear'
+            else:
+                first_30_min_trend = None  # Skip if pipettes requirement is not met
             
             pattern_name = '-'.join(patterns_in_hour)
             patterns.append((pattern_name, five_minute_trend, full_hour_trend, first_10_min_trend, first_15_min_trend, first_20_min_trend, first_30_min_trend))
@@ -135,7 +162,7 @@ def save_to_db(conn, patterns):
                 VALUES (%s, %s, 1)
                 ON DUPLICATE KEY UPDATE full_hour_bull_count = full_hour_bull_count + 1
             ''', (pattern_name, five_minute_trend))
-        else:
+        elif full_hour_trend == 'bear':
             cursor.execute('''
                 INSERT INTO candlestick_patterns (pattern_name, five_minute_trend, full_hour_bear_count)
                 VALUES (%s, %s, 1)
@@ -149,7 +176,7 @@ def save_to_db(conn, patterns):
                 SET first_10_min_bull_count = first_10_min_bull_count + 1
                 WHERE pattern_name = %s AND five_minute_trend = %s
             ''', (pattern_name, five_minute_trend))
-        else:
+        elif first_10_min_trend == 'bear':
             cursor.execute('''
                 UPDATE candlestick_patterns
                 SET first_10_min_bear_count = first_10_min_bear_count + 1
@@ -163,7 +190,7 @@ def save_to_db(conn, patterns):
                 SET first_15_min_bull_count = first_15_min_bull_count + 1
                 WHERE pattern_name = %s AND five_minute_trend = %s
             ''', (pattern_name, five_minute_trend))
-        else:
+        elif first_15_min_trend == 'bear':
             cursor.execute('''
                 UPDATE candlestick_patterns
                 SET first_15_min_bear_count = first_15_min_bear_count + 1
@@ -177,7 +204,7 @@ def save_to_db(conn, patterns):
                 SET first_20_min_bull_count = first_20_min_bull_count + 1
                 WHERE pattern_name = %s AND five_minute_trend = %s
             ''', (pattern_name, five_minute_trend))
-        else:
+        elif first_20_min_trend == 'bear':
             cursor.execute('''
                 UPDATE candlestick_patterns
                 SET first_20_min_bear_count = first_20_min_bear_count + 1
@@ -191,7 +218,7 @@ def save_to_db(conn, patterns):
                 SET first_30_min_bull_count = first_30_min_bull_count + 1
                 WHERE pattern_name = %s AND five_minute_trend = %s
             ''', (pattern_name, five_minute_trend))
-        else:
+        elif first_30_min_trend == 'bear':
             cursor.execute('''
                 UPDATE candlestick_patterns
                 SET first_30_min_bear_count = first_30_min_bear_count + 1
