@@ -2,6 +2,7 @@ import MetaTrader5 as mt5
 import pandas as pd
 import mysql.connector
 from datetime import datetime, timedelta
+from tabulate import tabulate  # For tabular data formatting
 
 # Constants
 SYMBOL = "EURUSD"
@@ -27,9 +28,9 @@ db = mysql.connector.connect(
 )
 cursor = db.cursor()
 
-# Create the patterns table if it doesn't exist
+# Create the candlestick table if it doesn't exist
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS patterns (
+CREATE TABLE IF NOT EXISTS candlestick (
     id INT AUTO_INCREMENT PRIMARY KEY,
     pattern_name VARCHAR(255) NOT NULL,
     three_minute_trend ENUM('Bull', 'Bear') NOT NULL,
@@ -262,6 +263,7 @@ def analyze_historical_data(data):
                         patterns[identifier]["first_30_min_bear"] += 1
 
     # Calculate percentage ratios for each pattern
+    results = []
     for pattern, counts in patterns.items():
         # Full hour trend
         full_hour_total = counts["full_hour_bull"] + counts["full_hour_bear"]
@@ -288,59 +290,30 @@ def analyze_historical_data(data):
         first_30_min_bull_ratio = (counts["first_30_min_bull"] / first_30_min_total) * 100 if first_30_min_total > 0 else 0
         first_30_min_bear_ratio = (counts["first_30_min_bear"] / first_30_min_total) * 100 if first_30_min_total > 0 else 0
 
-        # Print the results
-        print(f"Pattern: {pattern}")
-        print(f"Full Hour Trend: Bull={counts['full_hour_bull']}, Bear={counts['full_hour_bear']}, Bull Ratio={full_hour_bull_ratio:.2f}%, Bear Ratio={full_hour_bear_ratio:.2f}%")
-        print(f"First 10 Minutes: Bull={counts['first_10_min_bull']}, Bear={counts['first_10_min_bear']}, Bull Ratio={first_10_min_bull_ratio:.2f}%, Bear Ratio={first_10_min_bear_ratio:.2f}%")
-        print(f"First 15 Minutes: Bull={counts['first_15_min_bull']}, Bear={counts['first_15_min_bear']}, Bull Ratio={first_15_min_bull_ratio:.2f}%, Bear Ratio={first_15_min_bear_ratio:.2f}%")
-        print(f"First 20 Minutes: Bull={counts['first_20_min_bull']}, Bear={counts['first_20_min_bear']}, Bull Ratio={first_20_min_bull_ratio:.2f}%, Bear Ratio={first_20_min_bear_ratio:.2f}%")
-        print(f"First 30 Minutes: Bull={counts['first_30_min_bull']}, Bear={counts['first_30_min_bear']}, Bull Ratio={first_30_min_bull_ratio:.2f}%, Bear Ratio={first_30_min_bear_ratio:.2f}%")
-        print("-" * 50)
+        # Append the results to the list
+        results.append([
+            pattern,
+            counts["full_hour_bull"], counts["full_hour_bear"], f"{full_hour_bull_ratio:.2f}%", f"{full_hour_bear_ratio:.2f}%",
+            counts["first_10_min_bull"], counts["first_10_min_bear"], f"{first_10_min_bull_ratio:.2f}%", f"{first_10_min_bear_ratio:.2f}%",
+            counts["first_15_min_bull"], counts["first_15_min_bear"], f"{first_15_min_bull_ratio:.2f}%", f"{first_15_min_bear_ratio:.2f}%",
+            counts["first_20_min_bull"], counts["first_20_min_bear"], f"{first_20_min_bull_ratio:.2f}%", f"{first_20_min_bear_ratio:.2f}%",
+            counts["first_30_min_bull"], counts["first_30_min_bear"], f"{first_30_min_bull_ratio:.2f}%", f"{first_30_min_bear_ratio:.2f}%"
+        ])
 
-def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear):
-    """
-    Store the pattern in the MySQL database.
-    """
-    # Check if the pattern already exists
-    cursor.execute("""
-        SELECT full_hour_bull, full_hour_bear, first_10_min_bull, first_10_min_bear, first_15_min_bull, first_15_min_bear, first_20_min_bull, first_20_min_bear, first_30_min_bull, first_30_min_bear FROM patterns 
-        WHERE pattern_name = %s AND three_minute_trend = %s
-    """, (pattern_name, three_minute_trend))
-    result = cursor.fetchone()
+    # Print the results in a tabular format
+    headers = [
+        "Pattern", "Full Hour Bull", "Full Hour Bear", "Bull Ratio", "Bear Ratio",
+        "10 Min Bull", "10 Min Bear", "Bull Ratio", "Bear Ratio",
+        "15 Min Bull", "15 Min Bear", "Bull Ratio", "Bear Ratio",
+        "20 Min Bull", "20 Min Bear", "Bull Ratio", "Bear Ratio",
+        "30 Min Bull", "30 Min Bear", "Bull Ratio", "Bear Ratio"
+    ]
+    print(tabulate(results, headers=headers, tablefmt="pretty"))
 
-    if result:
-        # Update the counts if the pattern exists
-        new_full_hour_bull = result[0] + full_hour_bull
-        new_full_hour_bear = result[1] + full_hour_bear
-        new_first_10_min_bull = result[2] + first_10_min_bull
-        new_first_10_min_bear = result[3] + first_10_min_bear
-        new_first_15_min_bull = result[4] + first_15_min_bull
-        new_first_15_min_bear = result[5] + first_15_min_bear
-        new_first_20_min_bull = result[6] + first_20_min_bull
-        new_first_20_min_bear = result[7] + first_20_min_bear
-        new_first_30_min_bull = result[8] + first_30_min_bull
-        new_first_30_min_bear = result[9] + first_30_min_bear
-
+    # Store the results in the candlestick table
+    for row in results:
         cursor.execute("""
-            UPDATE patterns 
-            SET full_hour_bull = %s, full_hour_bear = %s,
-                first_10_min_bull = %s, first_10_min_bear = %s,
-                first_15_min_bull = %s, first_15_min_bear = %s,
-                first_20_min_bull = %s, first_20_min_bear = %s,
-                first_30_min_bull = %s, first_30_min_bear = %s
-            WHERE pattern_name = %s AND three_minute_trend = %s
-        """, (
-            new_full_hour_bull, new_full_hour_bear,
-            new_first_10_min_bull, new_first_10_min_bear,
-            new_first_15_min_bull, new_first_15_min_bear,
-            new_first_20_min_bull, new_first_20_min_bear,
-            new_first_30_min_bull, new_first_30_min_bear,
-            pattern_name, three_minute_trend
-        ))
-    else:
-        # Insert a new pattern if it doesn't exist
-        cursor.execute("""
-            INSERT INTO patterns (
+            INSERT INTO candlestick (
                 pattern_name, three_minute_trend,
                 full_hour_bull, full_hour_bear,
                 first_10_min_bull, first_10_min_bear,
@@ -350,12 +323,8 @@ def store_pattern(pattern_name, three_minute_trend, full_hour_bull, full_hour_be
             ) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            pattern_name, three_minute_trend,
-            full_hour_bull, full_hour_bear,
-            first_10_min_bull, first_10_min_bear,
-            first_15_min_bull, first_15_min_bear,
-            first_20_min_bull, first_20_min_bear,
-            first_30_min_bull, first_30_min_bear
+            row[0], "Bull" if "Bull" in row[0] else "Bear",
+            row[1], row[2], row[5], row[6], row[9], row[10], row[13], row[14], row[17], row[18]
         ))
     db.commit()
 

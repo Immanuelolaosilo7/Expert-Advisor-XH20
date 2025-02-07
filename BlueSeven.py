@@ -1,6 +1,7 @@
 import MetaTrader5 as mt5
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from tabulate import tabulate
 import plotly.graph_objects as go
 from datetime import datetime
 
@@ -23,9 +24,30 @@ def connect_to_mysql():
     engine = create_engine("mysql+mysqlconnector://Emmanuel:Password@localhost/Blue")
     return engine
 
-# Save data to MySQL
-def save_to_mysql(df, table_name, engine):
-    df.to_sql(table_name, con=engine, if_exists='replace', index=False)
+# Create a table named 'candle' in the database
+def create_candle_table(engine):
+    with engine.connect() as connection:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS candle (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                time DATETIME,
+                open FLOAT,
+                high FLOAT,
+                low FLOAT,
+                close FLOAT,
+                decimal_part INT,
+                group_name VARCHAR(10),
+                crossings VARCHAR(10),
+                pattern_name VARCHAR(100),
+                successor_bull_ratio FLOAT,
+                successor_bear_ratio FLOAT
+            )
+        """))
+        connection.commit()
+
+# Save data to MySQL in the 'candle' table
+def save_to_mysql(df, engine):
+    df.to_sql("candle", con=engine, if_exists='append', index=False)
 
 # Assign numbers to groups based on hardcoded sets
 def assign_decimal_group(number):
@@ -168,6 +190,14 @@ def visualize_candlestick_data(df):
     fig.update_layout(title="Candlestick Chart", xaxis_title="Time", yaxis_title="Price")
     fig.show()
 
+# Format data using tabulate
+def format_data_with_tabulate(df):
+    # Select relevant columns for display
+    display_df = df[['time', 'open', 'high', 'low', 'close', 'decimal_part', 'group', 'crossings', 'pattern_name', 'successor_bull_ratio', 'successor_bear_ratio']]
+    # Format the data using tabulate
+    table = tabulate(display_df, headers='keys', tablefmt='pretty', showindex=False)
+    return table
+
 # Main function
 def main():
     # Connect to MT5
@@ -206,8 +236,15 @@ def main():
     # Connect to MySQL
     engine = connect_to_mysql()
 
+    # Create the 'candle' table in the database
+    create_candle_table(engine)
+
     # Save candlestick data to MySQL
-    save_to_mysql(df, "candlestick_data", engine)
+    save_to_mysql(df, engine)
+
+    # Format data using tabulate
+    formatted_table = format_data_with_tabulate(df)
+    print(formatted_table)
 
     # Visualize candlestick data
     visualize_candlestick_data(df)

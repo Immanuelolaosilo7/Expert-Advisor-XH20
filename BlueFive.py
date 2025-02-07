@@ -2,6 +2,7 @@ import MetaTrader5 as mt5
 import pandas as pd
 import mysql.connector
 from datetime import datetime, timedelta
+from tabulate import tabulate  # For tabular data formatting
 
 # Database connection details
 db_config = {
@@ -46,6 +47,7 @@ def connect_to_db():
 
 def create_table(conn):
     cursor = conn.cursor()
+    # Create candlestick_patterns table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS candlestick_patterns (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -62,6 +64,24 @@ def create_table(conn):
             first_30_min_bull_count INT DEFAULT 0,
             first_30_min_bear_count INT DEFAULT 0,
             PRIMARY KEY (pattern_name, five_minute_trend)
+        )
+    ''')
+    # Create candles table for tabulated data
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS candles (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            pattern_name VARCHAR(50),
+            five_minute_trend ENUM('bull', 'bear'),
+            full_hour_buy INT DEFAULT 0,
+            full_hour_sell INT DEFAULT 0,
+            first_10_min_buy INT DEFAULT 0,
+            first_10_min_sell INT DEFAULT 0,
+            first_15_min_buy INT DEFAULT 0,
+            first_15_min_sell INT DEFAULT 0,
+            first_20_min_buy INT DEFAULT 0,
+            first_20_min_sell INT DEFAULT 0,
+            first_30_min_buy INT DEFAULT 0,
+            first_30_min_sell INT DEFAULT 0
         )
     ''')
     conn.commit()
@@ -155,7 +175,7 @@ def analyze_hourly_data(data):
 def save_to_db(conn, patterns):
     cursor = conn.cursor()
     for pattern_name, five_minute_trend, full_hour_trend, first_10_min_trend, first_15_min_trend, first_20_min_trend, first_30_min_trend in patterns:
-        # Update full-hour bull/bear count based on the trend
+        # Update candlestick_patterns table
         if full_hour_trend == 'bull':
             cursor.execute('''
                 INSERT INTO candlestick_patterns (pattern_name, five_minute_trend, full_hour_bull_count)
@@ -169,61 +189,36 @@ def save_to_db(conn, patterns):
                 ON DUPLICATE KEY UPDATE full_hour_bear_count = full_hour_bear_count + 1
             ''', (pattern_name, five_minute_trend))
         
-        # Update first 10 minutes bull/bear count based on the trend
-        if first_10_min_trend == 'bull':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_10_min_bull_count = first_10_min_bull_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        elif first_10_min_trend == 'bear':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_10_min_bear_count = first_10_min_bear_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        
-        # Update first 15 minutes bull/bear count based on the trend
-        if first_15_min_trend == 'bull':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_15_min_bull_count = first_15_min_bull_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        elif first_15_min_trend == 'bear':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_15_min_bear_count = first_15_min_bear_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        
-        # Update first 20 minutes bull/bear count based on the trend
-        if first_20_min_trend == 'bull':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_20_min_bull_count = first_20_min_bull_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        elif first_20_min_trend == 'bear':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_20_min_bear_count = first_20_min_bear_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        
-        # Update first 30 minutes bull/bear count based on the trend
-        if first_30_min_trend == 'bull':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_30_min_bull_count = first_30_min_bull_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
-        elif first_30_min_trend == 'bear':
-            cursor.execute('''
-                UPDATE candlestick_patterns
-                SET first_30_min_bear_count = first_30_min_bear_count + 1
-                WHERE pattern_name = %s AND five_minute_trend = %s
-            ''', (pattern_name, five_minute_trend))
+        # Update candles table with tabulated data
+        cursor.execute('''
+            INSERT INTO candles (
+                pattern_name, five_minute_trend,
+                full_hour_buy, full_hour_sell,
+                first_10_min_buy, first_10_min_sell,
+                first_15_min_buy, first_15_min_sell,
+                first_20_min_buy, first_20_min_sell,
+                first_30_min_buy, first_30_min_sell
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                full_hour_buy = full_hour_buy + VALUES(full_hour_buy),
+                full_hour_sell = full_hour_sell + VALUES(full_hour_sell),
+                first_10_min_buy = first_10_min_buy + VALUES(first_10_min_buy),
+                first_10_min_sell = first_10_min_sell + VALUES(first_10_min_sell),
+                first_15_min_buy = first_15_min_buy + VALUES(first_15_min_buy),
+                first_15_min_sell = first_15_min_sell + VALUES(first_15_min_sell),
+                first_20_min_buy = first_20_min_buy + VALUES(first_20_min_buy),
+                first_20_min_sell = first_20_min_sell + VALUES(first_20_min_sell),
+                first_30_min_buy = first_30_min_buy + VALUES(first_30_min_buy),
+                first_30_min_sell = first_30_min_sell + VALUES(first_30_min_sell)
+        ''', (
+            pattern_name, five_minute_trend,
+            1 if full_hour_trend == 'bull' else 0, 1 if full_hour_trend == 'bear' else 0,
+            1 if first_10_min_trend == 'bull' else 0, 1 if first_10_min_trend == 'bear' else 0,
+            1 if first_15_min_trend == 'bull' else 0, 1 if first_15_min_trend == 'bear' else 0,
+            1 if first_20_min_trend == 'bull' else 0, 1 if first_20_min_trend == 'bear' else 0,
+            1 if first_30_min_trend == 'bull' else 0, 1 if first_30_min_trend == 'bear' else 0
+        ))
     conn.commit()
 
 def calculate_bull_bear_ratio(conn):

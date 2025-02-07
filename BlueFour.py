@@ -2,6 +2,7 @@ import MetaTrader5 as mt5
 import pandas as pd
 import pymysql
 from datetime import datetime, timedelta
+from tabulate import tabulate  # For tabular formatting
 
 # Initialize MT5 connection
 mt5.initialize()
@@ -166,8 +167,9 @@ def process_data(symbol, timeframe, min_longer_wick, min_diff_body_shorter, min_
 
 # Function to save patterns to MySQL
 def save_patterns_to_db(pattern_data):
+    # Create the `candle` table if it doesn't exist
     create_table_query = """
-    CREATE TABLE IF NOT EXISTS candlestick_patterns (
+    CREATE TABLE IF NOT EXISTS candle (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pattern_name VARCHAR(255),
         three_minute_trend VARCHAR(50),
@@ -180,6 +182,8 @@ def save_patterns_to_db(pattern_data):
     """
     cursor.execute(create_table_query)
     
+    # Prepare data for tabulate
+    table_data = []
     for unique_identifier, data in pattern_data.items():
         pattern_name, three_minute_trend = unique_identifier.rsplit('_', 1)
         
@@ -190,13 +194,22 @@ def save_patterns_to_db(pattern_data):
             bull_ratio = (bull_count / total) * 100 if total > 0 else 0
             bear_ratio = (bear_count / total) * 100 if total > 0 else 0
             
+            # Append data to the table
+            table_data.append([pattern_name, three_minute_trend, interval_type, bull_count, bear_count, bull_ratio, bear_ratio])
+            
+            # Insert data into the `candle` table
             insert_query = """
-            INSERT INTO candlestick_patterns (pattern_name, three_minute_trend, interval_type, bull_count, bear_count, bull_ratio, bear_ratio)
+            INSERT INTO candle (pattern_name, three_minute_trend, interval_type, bull_count, bear_count, bull_ratio, bear_ratio)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(insert_query, (pattern_name, three_minute_trend, interval_type, bull_count, bear_count, bull_ratio, bear_ratio))
     
+    # Commit changes to the database
     connection.commit()
+    
+    # Print the table using tabulate
+    headers = ["Pattern Name", "3-Minute Trend", "Interval Type", "Bull Count", "Bear Count", "Bull Ratio", "Bear Ratio"]
+    print(tabulate(table_data, headers=headers, tablefmt="pretty"))
 
 # Main execution
 if __name__ == "__main__":
